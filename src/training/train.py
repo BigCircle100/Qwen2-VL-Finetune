@@ -62,7 +62,8 @@ def train():
 
     parser = HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
-    
+    # 这个方法会将命令行传入的参数，传入上述几个类中对应的参数字段
+    # 返回值就是上面三个类的实例，并且已根据命令行参数赋值完成
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     use_liger = training_args.use_liger
     if "Qwen2.5" in model_args.model_id:
@@ -134,6 +135,7 @@ def train():
 
     model.config.use_cache = False
     model_to_configure = model
+    # 训练是否冻结权重，对应lora
     configure_llm(model_to_configure, training_args)
     configure_vision_tower(model_to_configure, training_args, compute_dtype, training_args.device)
 

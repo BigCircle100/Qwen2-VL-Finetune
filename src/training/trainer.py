@@ -56,12 +56,17 @@ class QwenTrainer(Trainer):
         opt_model = self.model
 
         if self.optimizer is None:
+            # 获取需要decay的参数名，decay相当于正则化，防止单次参数更新过大
+            # 除了Layernorm层和bias，其他参数都需要decay。
+            # norm层主要用于稳定训练，调整数据均值和方差（分布范围），而不是提取特征，加decay会影响归一化效果
+            # bias用于在神经元上引入额外自由度，偏置项过于收缩会影响模型的表达能力
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
             lr_mapper = {}
             visual_parameters = []
             merger_parameters = []
 
+            # 获取args设置的对vision部分和merger部分单独设置的参数
             if self.args.vision_lr is not None:
                 lr_mapper["visual"] = self.args.vision_lr
                 visual_parameters = [name for name, _ in opt_model.named_parameters() if "visual" in name and "merger" not in name]
@@ -69,6 +74,7 @@ class QwenTrainer(Trainer):
                 lr_mapper["merger"] = self.args.merger_lr
                 merger_parameters = [name for name, _ in opt_model.named_parameters() if "merger" in name]
 
+            # 如果有单独设置的参数，就单独配置不同的训练参数
             if len(lr_mapper) > 0:
                 special_lr_parameters = merger_parameters + visual_parameters
                 
@@ -114,7 +120,7 @@ class QwenTrainer(Trainer):
                             },
                         ]
                     )
-            else:
+            else: # 没有单独配置训练参数就只分为需要衰减和不需要衰减的参数
                 optimizer_grouped_parameters = [
                     {
                         "params": [p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad)],
@@ -128,6 +134,10 @@ class QwenTrainer(Trainer):
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+            # embedding层不应该用adam8bit，如果用adam8bit需要跳过embedding层
+            # embedding层的功能是将token_id转换为对应的词向量（长度为隐藏层维度），类似与查表，和attention与ffn相比参数少得多，没必要用更低位的adam
+            # embedding层是后面推理的基础，精度非常重要，adam8bit可能会掉精度。
             if optimizer_cls.__name__ == "Adam8bit":
                 import bitsandbytes
 
@@ -183,6 +193,10 @@ class QwenTrainer(Trainer):
         else:
             super(QwenTrainer, self)._save_checkpoint(model, trial)
 
+    # 这个保存方法中，对于PreTrainedModel、PeftModel可以直接使用save_pretrained方法
+    # 不是这两个类的情况中，有可能是这两个类外面包裹了加速器，因此要解包裹，调用对应的解封装函数就可以，不同的加速器封装可能不一样
+    # 上述情况都不是就只能保存state_dict了
+    # state_dict本质是保存了参数名和值的字典，使用save_pretrained函数会同时保存state_dict、config、tokenizer、processor等，调用from_pretrained可以快速恢复环境。
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
             # If we are executing this function, we are the process zero, so we don't check for that.
             output_dir = output_dir if output_dir is not None else self.args.output_dir
