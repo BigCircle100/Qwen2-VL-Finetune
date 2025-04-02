@@ -94,6 +94,15 @@ def get_video_info(video_path, min_pixels, max_pixels, width, height, fps):
 
     return video_input[0], video_kwargs
 
+# Dataset先初始化一堆值，需要记录一些参数，包括图像、视频相关参数和地址，
+# 以及对应json的内容（记录了图片名和conversation内容）
+# getitem的返回值是五个键值对
+# 文本部分：'input_ids', 'attention_mask', 'labels'。input_ids中包含了图片token的占位符。
+# 图片、视频部分：'pixel_values', 'image_grid_thw'
+# pixel_values将原图片按照max/min_pixel的要求resize，归一化，reshape等操作。当前图片的例子中shape是[1564, 1176]
+# image_grid_thw用于描述图像的网格结构信息。当前图片的例子中shape是[[ 1, 34, 46]]，小的patch图片是14*14
+# 对于单张图片处理，pixel_values会复制一次图片信息，目的是和视频处理方式对齐（应该是和相邻帧信息有关系），可以发现1564*1176=34*14*46*14*2。
+# qwen有单独的qwen_vl_util来进行这些输入的预处理，如process_vision_info，可以优先关注怎么生成符合qwen要求的输入。
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
@@ -264,6 +273,7 @@ class SupervisedDataset(Dataset):
         
         return data_dict
 
+# datacollator用于将dataset取出来的数据组batch，打padding。根据传入的examples个数来决定batch_size
 class DataCollatorForSupervisedDataset(object):
     """Collate examples for supervised fine-tuning."""
 

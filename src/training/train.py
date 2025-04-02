@@ -188,10 +188,24 @@ def train():
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
 
+
+    # 这里是一些处理数据集的方法，包括train dataset和data_collator
+    # 这些是后续Trainer类需要用到的参数
     data_module = make_supervised_data_module(model_id=model_args.model_id,
                                               processor=processor,
                                               data_args=data_args)
 
+    # *和**是一种解包方法，可以用在传参数的时候
+    # 用*对列表和元组解包，**对字典解包
+    # 下面这个调用的效果与注释的这个调用效果相同：（只是把data_module展开了，参数名对应key）
+    # trainer = Trainer(
+    #     model=model,
+    #     processor=processor,
+    #     args=training_args,
+    #     train_dataset=sft_dataset,
+    #     eval_dataset=None,
+    #     data_collator=data_collator
+    # )
     trainer = QwenTrainer(
         model=model,
         processor=processor,

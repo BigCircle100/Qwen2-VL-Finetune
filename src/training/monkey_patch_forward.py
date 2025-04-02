@@ -16,6 +16,13 @@ def replace_qwen_2_with_mixed_modality_forward(use_liger=True):
     else:
         transformers.models.qwen2_vl.modeling_qwen2_vl.Qwen2VLForConditionalGeneration.forward = qwen_2_mixed_modality_forward
 
+# 没有用liger的版本中，这个forward与原forward的区别是增加了没有图片或视频输入的情况，纯文字作为输入会增加dummy_pixel和dummy_grid来占位
+# 时刻t生成的token是基于时刻1~t-1的真实token生成的（每个时刻根据label对应时刻前的所有token去预测新token，然后求这个token生成的损失值，而不是每一时刻都真的基于模型自己预测的上一个token来继续产生）。
+# label一般第一位是起始符，这个需要去掉，因此label的有效长度是t-1，这意味着时刻t生成的token是没有对应label的，也需要去掉。
+# 对于求损失函数的部分（loss），损失函数是每个时刻都会求一次，每次生成token得到的损失函数值都会和之前的损失函数累加，梯度更新是在这整条数据（预测的t个token）都求完后更新一次。
+# 上面这个过程对应着源码中的shift
+
+# 有liger的版本中，输入要求是lm head weight、hidden_state和label，在没有liger的版本的基础上，对hidden_state求shift而不是logits了。
 def replace_qwen2_5_with_mixed_modality_forward(use_liger=True):
     if use_liger:
         transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration.forward = qwen2_5_mixed_modality_forward_with_flce
