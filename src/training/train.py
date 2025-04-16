@@ -45,6 +45,8 @@ def configure_vision_tower(model, training_args, compute_dtype, device):
     vision_model_params = model.visual.parameters()
     set_requires_grad(vision_model_params, not training_args.freeze_vision_tower)
     
+    # merger是vision的一部分，用于将相邻的4个patch融合到一起产生一个token，用于减少token数量
+    # 这也是为什么shell脚本里min_pixel和max_pixel是n*28*28，一个小patch是14，融合需要时偶数个patch
     # Handle merger specifically
     merger_params = model.visual.merger.parameters()
     set_requires_grad(merger_params, training_args.tune_merger)
@@ -91,6 +93,7 @@ def train():
         raise ValueError("If `vision_lora` is True, `freeze_vision_tower` must also be True.")
 
     else:
+        # lora_namespan_exclude是不用lora训练的部分
         if training_args.lora_namespan_exclude is not None:
             training_args.lora_namespan_exclude = ast.literal_eval(training_args.lora_namespan_exclude)
         else:

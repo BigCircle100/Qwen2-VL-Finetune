@@ -19,10 +19,13 @@ def replace_qwen_2_with_mixed_modality_forward(use_liger=True):
 # 没有用liger的版本中，这个forward与原forward的区别是增加了没有图片或视频输入的情况，纯文字作为输入会增加dummy_pixel和dummy_grid来占位
 # 时刻t生成的token是基于时刻1~t-1的真实token生成的（每个时刻根据label对应时刻前的所有token去预测新token，然后求这个token生成的损失值，而不是每一时刻都真的基于模型自己预测的上一个token来继续产生）。
 # label一般第一位是起始符，这个需要去掉，因此label的有效长度是t-1，这意味着时刻t生成的token是没有对应label的，也需要去掉。
-# 对于求损失函数的部分（loss），损失函数是每个时刻都会求一次，每次生成token得到的损失函数值都会和之前的损失函数累加，梯度更新是在这整条数据（预测的t个token）都求完后更新一次。
+# 对于训练来讲，每个时刻去求预测的token，这个过程是并行的，这个模型应该是包括了一个上三角矩阵，保证当前时刻只能看到当前时刻之前的token。实际推理时没有这个东西。
+# 对于求损失函数的部分（loss），所有时刻生成token得到的损失函数值累加，然后再进行梯度更新。
 # 上面这个过程对应着源码中的shift
 
 # 有liger的版本中，输入要求是lm head weight、hidden_state和label，在没有liger的版本的基础上，对hidden_state求shift而不是logits了。
+# liger kernel是用triton开发的优化算子库，目前包括了RoPE、RMSNorm等，可以增加训练吞吐量，减少内存使用
+# 对于交叉熵，可能把softmax、求对数和计算损失函数放在一个kernel内，优化计算过程，减少内存搬运
 def replace_qwen2_5_with_mixed_modality_forward(use_liger=True):
     if use_liger:
         transformers.models.qwen2_5_vl.modeling_qwen2_5_vl.Qwen2_5_VLForConditionalGeneration.forward = qwen2_5_mixed_modality_forward_with_flce
